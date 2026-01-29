@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIGODS • The Future of Artificial Intelligence</title>
+    <meta name="description" content="AIGODS - Decentralized Superintelligence Token. Presale: $0.20 → Listing: $3.50 (17.5x). Backed by BlackRock, Tesla, OpenAI & $10B+."/>
+    <link rel="icon" href="https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGODS-cinematic-lighting-hyper-detailed-8k?width=512&height=512&nologo=true" type="image/png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #000000;
+        color: white;
+        margin: 0;
+        overflow-x: hidden;
+      }
+      .text-gradient-magenta {
+        background: linear-gradient(90deg, #00ffff, #ff00ff, #ffffff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .bg-gradient-cyan-magenta {
+        background: linear-gradient(to right, #ff00ff, #00ffff);
+      }
+      .neon-glow-green {
+        box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #000;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #1a0b2e;
+        border-radius: 4px;
+      }
+
+      /* Global Keyframes for 3D and Particle effects */
+      @keyframes spin-3d {
+        0% { transform: rotateY(0deg) rotateX(12deg); }
+        100% { transform: rotateY(360deg) rotateX(12deg); }
+      }
+      
+      @keyframes float {
+        0%, 100% { transform: translateY(0) translateX(0) scale(1) rotate(0deg); }
+        25% { transform: translateY(-60px) translateX(30px) scale(1.1) rotate(5deg); }
+        50% { transform: translateY(-20px) translateX(-30px) scale(0.9) rotate(-5deg); }
+        75% { transform: translateY(40px) translateX(20px) scale(1.05) rotate(2deg); }
+      }
+
+      @keyframes bubble-float {
+        0% { transform: translateY(100vh) scale(0); opacity: 0; }
+        20% { opacity: 0.6; }
+        80% { opacity: 0.6; }
+        100% { transform: translateY(-20vh) scale(1.5); opacity: 0; }
+      }
+
+      @keyframes fire-rise {
+        0% { transform: translateY(0) scale(1); opacity: 0.8; filter: blur(2px); }
+        50% { transform: translateY(-20px) scale(1.2); opacity: 1; filter: blur(10px); }
+        100% { transform: translateY(-40px) scale(1.4); opacity: 0; filter: blur(20px); }
+      }
+
+      @keyframes slow-zoom {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+      }
+
+      @keyframes pulse-slow {
+        0%, 100% { opacity: 0.1; }
+        50% { opacity: 0.3; }
+      }
+
+      @keyframes flicker {
+        0%, 100% { opacity: 0.6; transform: scale(1) translateX(-50%); }
+        50% { opacity: 1; transform: scale(1.15) translateX(-50%); }
+      }
+
+      @keyframes coin-rotate-slow {
+        from { transform: rotateY(0deg) rotateX(10deg); }
+        to { transform: rotateY(360deg) rotateX(10deg); }
+      }
+
+      @keyframes dimming-light {
+        0%, 100% { 
+          opacity: 1; 
+          text-shadow: 0 0 20px rgba(255,255,255,0.6), 0 0 40px rgba(34,211,238,0.4);
+        }
+        50% { 
+          opacity: 0.7; 
+          text-shadow: 0 0 10px rgba(255,255,255,0.2), 0 0 20px rgba(34,211,238,0.1);
+        }
+      }
+
+      .animate-spin-3d { animation: spin-3d linear infinite; }
+      .animate-float { animation: float ease-in-out infinite; }
+      .animate-bubble-float { animation: bubble-float linear infinite; }
+      .animate-fire-rise { animation: fire-rise 2s ease-out infinite; }
+      .animate-slow-zoom { animation: slow-zoom 30s ease-in-out infinite; }
+      .animate-pulse-slow { animation: pulse-slow 5s ease-in-out infinite; }
+      .animate-flicker { animation: flicker 1.5s ease-in-out infinite; }
+      .animate-coin-rotate-slow { animation: coin-rotate-slow 15s linear infinite; }
+      .animate-dimming-light { animation: dimming-light 4s ease-in-out infinite; }
+
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.36.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

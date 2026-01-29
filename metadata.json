@@ -1,0 +1,7 @@
+{
+  "name": "AIGODS - Decentralized Superintelligence",
+  "description": "A high-fidelity landing page for the AIGODS ecosystem featuring a cyberpunk aesthetic, interactive token calculator, and a god-level AI assistant powered by Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
