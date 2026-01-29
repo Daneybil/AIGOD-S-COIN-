@@ -1,8 +1,9 @@
+
 import React from 'react';
 
 const LOGO_DATA = [
   // Row 1
-  { name: 'AI GODS', url: 'https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGODS-cinematic-lighting-hyper-detailed-8k?width=128&height=128&nologo=true', isSpecial: true },
+  { name: 'AI GODS', url: 'https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGOD%27S-cinematic-lighting-hyper-detailed-8k?width=128&height=128&nologo=true', isSpecial: true },
   { name: 'BlackRock', url: 'https://images.pollinations.ai/prompt/blackrock-logo-minimalist-symbol-vector-style-white?width=128&height=128&nologo=true', label: 'BL' },
   { name: 'Tesla', url: 'https://upload.wikimedia.org/wikipedia/commons/b/bd/Tesla_Motors.svg' },
   { name: 'OpenAI', url: 'https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg' },

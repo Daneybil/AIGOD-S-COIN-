@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [calcChain, setCalcChain] = useState<string>('BNB');
   const [calcStage, setCalcStage] = useState<string>('Stage 2');
   const [buyAmount, setBuyAmount] = useState<string>('');
+  const [userBalance, setUserBalance] = useState<number>(0);
 
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
@@ -46,6 +47,7 @@ const App: React.FC = () => {
   const [isBuyProcessing, setIsBuyProcessing] = useState(false);
   const [activeNetwork, setActiveNetwork] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectingWalletName, setConnectingWalletName] = useState<string | null>(null);
   const [claimedWallets, setClaimedWallets] = useState<Set<string>>(new Set());
 
   // Social Task State
@@ -103,12 +105,15 @@ const App: React.FC = () => {
 
   const connectWallet = (walletName: string) => {
     setIsConnecting(true);
-    // Simulated connection delay
+    setConnectingWalletName(walletName);
+    // Enhanced simulation for a "professional" feel across all wallets (Metamask, Trust, etc)
     setTimeout(() => {
       setConnectedAddress('0x71C...492b');
       setIsConnecting(false);
+      setConnectingWalletName(null);
       setIsWalletModalOpen(false);
-    }, 1500);
+      alert(`Wallet Linked! ${walletName} is now authorized to interact with contract ${CONTRACT_ADDRESS.slice(0, 10)}...`);
+    }, 2000);
   };
 
   const handleBuyToken = () => {
@@ -116,18 +121,22 @@ const App: React.FC = () => {
       setIsWalletModalOpen(true);
       return;
     }
-    if (!buyAmount || parseFloat(buyAmount) <= 0) {
+    const amountNum = parseFloat(buyAmount);
+    if (!buyAmount || isNaN(amountNum) || amountNum <= 0) {
       alert("Please enter a valid purchase amount.");
       return;
     }
     
     setIsBuyProcessing(true);
-    // Simulating Polygon Smart Contract interaction
+    // Simulating Real Polygon Smart Contract interaction
     setTimeout(() => {
       setIsBuyProcessing(false);
-      alert(`Success! Transaction processed through contract ${CONTRACT_ADDRESS}. AIGODS tokens are being routed to your wallet.`);
+      const usdValue = amountNum * (tokenPrices[activeNetwork || 'BNB'] || 1);
+      const tokensBought = Math.floor(usdValue / STAGE_1_PRICE);
+      setUserBalance(prev => prev + tokensBought);
+      alert(`CONGRATULATIONS! Transaction successful on Polygon. ${tokensBought.toLocaleString()} AIGODS tokens have been added to your balance via contract ${CONTRACT_ADDRESS}.`);
       setBuyAmount('');
-    }, 2500);
+    }, 3500);
   };
 
   const verifySocialTask = (platform: 'twitter' | 'telegram' | 'youtube') => {
@@ -154,7 +163,8 @@ const App: React.FC = () => {
   const finishAirdropClaim = () => {
     if (socialTasks.twitter && socialTasks.telegram && socialTasks.youtube) {
       setClaimedWallets(prev => new Set(prev).add(connectedAddress!));
-      alert(`Success! 100 AIGODS airdrop claimed via contract ${CONTRACT_ADDRESS}. Distributed at TGE.`);
+      setUserBalance(prev => prev + 100);
+      alert(`Success! 100 AIGODS airdrop claimed via contract ${CONTRACT_ADDRESS}. Check your balance above.`);
       setIsAirdropModalOpen(false);
     }
   };
@@ -163,7 +173,7 @@ const App: React.FC = () => {
     ? `${window.location.origin}?ref=${connectedAddress}&contract=${CONTRACT_ADDRESS}` 
     : "Connect wallet to generate referral link";
 
-  const AIGODS_LOGO_URL = "https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGODS-cinematic-lighting-hyper-detailed-8k?width=512&height=512&nologo=true";
+  const AIGODS_LOGO_URL = "https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGOD%27S-cinematic-lighting-hyper-detailed-8k?width=512&height=512&nologo=true";
 
   return (
     <div className="min-h-screen relative flex flex-col items-center py-10 px-4 md:px-0 bg-transparent text-white">
@@ -172,13 +182,29 @@ const App: React.FC = () => {
       {/* Floating AI Assistant */}
       <ChatAssistant logoUrl={AIGODS_LOGO_URL} />
 
+      {/* Persistent User Info (Top Center) */}
+      {connectedAddress && (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-black/60 backdrop-blur-xl border border-cyan-500/30 px-6 py-3 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.2)] animate-in slide-in-from-top-4 duration-500">
+           <div className="flex flex-col items-center">
+              <span className="text-[10px] text-cyan-400 font-black uppercase tracking-widest">YOUR AIGODS BALANCE</span>
+              <span className="text-xl font-black text-white">{userBalance.toLocaleString()}</span>
+           </div>
+           <div className="w-[1px] h-8 bg-gray-800 mx-2"></div>
+           <div className="flex flex-col items-end">
+              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">CONNECTED</span>
+              <span className="text-xs font-mono text-cyan-500">{connectedAddress}</span>
+           </div>
+        </div>
+      )}
+
       {/* Transaction Loading Overlay */}
       {isBuyProcessing && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md">
           <div className="text-center space-y-6">
             <Loader2 size={80} className="text-cyan-400 animate-spin mx-auto" />
             <h3 className="text-3xl font-black uppercase italic tracking-widest text-white">Broadcasting to Polygon</h3>
-            <p className="text-cyan-400 font-bold tracking-[0.2em] text-xs uppercase">Contract: {CONTRACT_ADDRESS}</p>
+            <p className="text-cyan-400 font-bold tracking-[0.2em] text-xs uppercase">Target Contract: {CONTRACT_ADDRESS}</p>
+            <p className="text-gray-500 text-sm font-bold animate-pulse uppercase">Awaiting block confirmation...</p>
           </div>
         </div>
       )}
@@ -210,7 +236,7 @@ const App: React.FC = () => {
                 <button 
                   key={wallet.name}
                   onClick={() => connectWallet(wallet.name)}
-                  className="w-full bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-white/10 p-5 rounded-2xl flex items-center justify-between transition-all group"
+                  className={`w-full bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-white/10 p-5 rounded-2xl flex items-center justify-between transition-all group ${isConnecting && connectingWalletName !== wallet.name ? 'opacity-30' : ''}`}
                   disabled={isConnecting}
                 >
                   <div className="flex items-center gap-4">
@@ -220,7 +246,12 @@ const App: React.FC = () => {
                       <span className="text-[8px] text-gray-500 font-black uppercase">{wallet.chain}</span>
                     </div>
                   </div>
-                  {isConnecting ? <Loader2 size={20} className="animate-spin text-cyan-400" /> : <ChevronRight size={20} className="text-gray-600 group-hover:text-cyan-400" />}
+                  {isConnecting && connectingWalletName === wallet.name ? (
+                    <div className="flex flex-col items-end">
+                      <Loader2 size={16} className="animate-spin text-cyan-400 mb-1" />
+                      <span className="text-[6px] text-cyan-400 font-black uppercase">Syncing {wallet.name}...</span>
+                    </div>
+                  ) : <ChevronRight size={20} className="text-gray-600 group-hover:text-cyan-400" />}
                 </button>
               ))}
             </div>
@@ -295,11 +326,11 @@ const App: React.FC = () => {
       <div className="fixed top-8 left-8 z-50 flex flex-col md:flex-row items-start md:items-center gap-6">
         <div className="flex items-center gap-6">
           <div className="relative group cursor-pointer hover:scale-110 transition-transform">
-            <div className="absolute inset-0 bg-orange-500/30 rounded-full blur-2xl group-hover:bg-orange-500/50 transition-all"></div>
+            <div className="absolute inset-0 bg-orange-500/40 rounded-full blur-3xl group-hover:bg-orange-500/60 transition-all"></div>
             <img 
               src={AIGODS_LOGO_URL} 
               alt="AIGODS Logo" 
-              className="w-16 h-16 md:w-32 md:h-32 rounded-full border-4 border-yellow-500/60 relative z-10 shadow-[0_0_40px_rgba(234,179,8,0.5)]"
+              className="w-16 h-16 md:w-32 md:h-32 rounded-full border-4 border-yellow-500/80 relative z-10 shadow-[0_0_50px_rgba(234,179,8,0.7)] object-cover"
             />
           </div>
           
@@ -422,7 +453,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-6">
                   <div className="relative">
                     <div className="absolute inset-0 bg-yellow-500/20 blur-xl rounded-full"></div>
-                    <img src={AIGODS_LOGO_URL} className="w-20 h-20 md:w-28 md:h-28 rounded-full border-2 border-yellow-500/40 relative z-10" alt="Logo" />
+                    <img src={AIGODS_LOGO_URL} className="w-20 h-20 md:w-28 md:h-28 rounded-full border-2 border-yellow-500/40 relative z-10 object-cover" alt="Logo" />
                   </div>
                   <div>
                     <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">AI GODS (AIGODS)</h2>
@@ -434,7 +465,7 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              <h3 className="text-4xl md:text-6xl font-black italic text-center uppercase tracking-tighter leading-tight">
+              <h3 className="text-4xl md:text-6xl font-black italic text-center uppercase tracking-tighter leading-tight text-center">
                 THE FUTURE IS NOW – BECOME A GOD IN CRYPTO 👑
               </h3>
 
@@ -556,15 +587,6 @@ const App: React.FC = () => {
                   </section>
                 </div>
 
-                {/* Section 6 */}
-                <section className="bg-purple-900/10 border border-purple-500/20 p-10 md:p-14 rounded-[3rem] text-center space-y-6">
-                   <h4 className="text-2xl md:text-4xl font-black text-[#FF00FF] uppercase italic tracking-tighter">6. POWERFUL REFERRAL SYSTEM</h4>
-                   <p className="text-gray-300 text-xs md:text-sm font-bold uppercase tracking-widest">
-                     Promote AI GODS and earn <span className="text-green-400">50% INSTANT REWARDS</span> on all sales hitting the {CONTRACT_ADDRESS.slice(0, 6)}... smart contract.
-                   </p>
-                   <button onClick={() => handleNetworkClick('REFERRAL')} className="bg-white text-black font-black py-5 px-12 rounded-2xl uppercase text-sm tracking-widest hover:scale-105 transition-all mt-4">GET REFERRAL LINK</button>
-                </section>
-
                 <div className="text-center space-y-10 pt-10 pb-20">
                     <h2 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase leading-none text-white">
                       AI GODS – The Future is Here. <br/>
@@ -582,7 +604,7 @@ const App: React.FC = () => {
       )}
 
       {/* Hero Badge */}
-      <div className="bg-gradient-cyan-magenta text-black text-xl md:text-5xl font-black px-12 py-6 md:py-8 rounded-[3rem] mb-12 tracking-[0.1em] md:tracking-[0.2em] uppercase shadow-2xl animate-pulse text-center mt-64 md:mt-32 w-[95%] md:w-auto">
+      <div className="bg-gradient-cyan-magenta text-black text-xl md:text-5xl font-black px-12 py-6 md:py-8 rounded-[3rem] mb-12 tracking-[0.1em] md:tracking-[0.2em] uppercase shadow-2xl animate-pulse text-center mt-64 md:mt-32 w-[95%] md:w-auto italic">
         LAUNCHING SOON – 10$ BILLION+ BACKED
       </div>
 
@@ -666,7 +688,6 @@ const App: React.FC = () => {
 
       {/* 3D Rotating Coin Image Section with Flaming Fire */}
       <div className="mt-32 relative group">
-          {/* Enhanced Fire Underneath */}
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-48 pointer-events-none">
             {[...Array(6)].map((_, i) => (
               <div 
@@ -678,9 +699,9 @@ const App: React.FC = () => {
             <div className="absolute inset-0 bg-orange-500/40 blur-[100px] rounded-full scale-150 animate-pulse"></div>
           </div>
 
-          <div className="relative w-64 h-64 md:w-96 md:h-96 rounded-full border-4 border-yellow-500/40 p-2 shadow-[0_0_120px_rgba(234,179,8,0.5)] transition-transform hover:scale-105 duration-700">
-              <div className="w-full h-full rounded-full border-2 border-yellow-500/60 overflow-hidden bg-black animate-coin-rotate-slow">
-                 <img src={AIGODS_LOGO_URL} className="w-full h-full object-cover" alt="Rotating AIGODS" />
+          <div className="relative w-64 h-64 md:w-96 md:h-96 rounded-full border-4 border-yellow-500/40 p-2 shadow-[0_0_120px_rgba(234,179,8,0.7)] transition-transform hover:scale-110 duration-700">
+              <div className="w-full h-full rounded-full border-2 border-yellow-500/60 overflow-hidden bg-black animate-coin-rotate-slow shadow-[inset_0_0_40px_rgba(234,179,8,0.5)]">
+                 <img src={AIGODS_LOGO_URL} className="w-full h-full object-cover" alt="Rotating AIGOD'S Logo" />
               </div>
           </div>
       </div>
@@ -757,38 +778,6 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        {/* Instant Card Checkout Info */}
-        <div className="w-full bg-[#0d1117]/60 border border-blue-500/20 rounded-[2.5rem] p-10 md:p-12 mb-16 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full"></div>
-            <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
-                <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)]">
-                    <Zap size={40} className="text-white fill-white" />
-                </div>
-                <div className="flex-1 space-y-6">
-                    <h4 className="text-white font-black text-xl md:text-2xl uppercase tracking-[0.2em] flex items-center gap-4">
-                        INSTANT CARD CHECKOUT
-                        <div className="h-[1px] flex-1 bg-blue-500/30"></div>
-                    </h4>
-                    <p className="text-gray-400 text-sm md:text-base leading-relaxed font-medium">
-                        Securely purchase AIGODS tokens via contract <code className="text-white">{CONTRACT_ADDRESS.slice(0, 10)}...</code> using Visa, Mastercard, or Apple Pay. Our automated Polygon bridge handles instant delivery.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div className="flex items-center gap-3 text-green-400 text-[10px] font-black uppercase tracking-widest">
-                            <CheckCircle2 size={16} /> INSTANT TOKEN DELIVERY
-                        </div>
-                        <div className="flex items-center gap-3 text-green-400 text-[10px] font-black uppercase tracking-widest">
-                            <CheckCircle2 size={16} /> FULLY SECURED & AUDITED
-                        </div>
-                        <div className="flex items-center gap-3 text-green-400 text-[10px] font-black uppercase tracking-widest">
-                            <CheckCircle2 size={16} /> 30-SEC VERIFICATION
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <p className="text-cyan-400 font-black text-[10px] uppercase tracking-[0.3em] mb-12 text-center">SELECT PAYMENT METHOD TO PROCEED</p>
-
         {/* Main Buy & Input Section */}
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch mb-8">
             <div className="lg:col-span-7 bg-[#0d1117]/40 border border-gray-800 rounded-[2rem] p-4 flex items-center relative group overflow-hidden">
@@ -827,7 +816,7 @@ const App: React.FC = () => {
             VIRAL GROWTH IS THE ENGINE OF OUR REVOLUTION.
         </p>
         <p className="text-gray-400 font-bold mb-8 text-sm md:text-base max-w-3xl mx-auto leading-relaxed text-center">
-          Referrals are the fastest way to advertise AIGODS. By sharing, you don't just earn <span className="text-green-400">50% INSTANT REWARDS</span>—you directly increase the value of your own bags by accelerating our roadmap via contract <code className="text-white">{CONTRACT_ADDRESS.slice(0, 12)}...</code>
+          Referrals are the fastest way to advertise AIGODS. By sharing, you don't just earn <span className="text-green-400">50% INSTANT REWARDS</span>—you directly increase the value of your own bags via contract <code className="text-white">{CONTRACT_ADDRESS.slice(0, 12)}...</code>
         </p>
         
         <div className="bg-white/5 border border-white/10 rounded-3xl p-6 mb-8 flex flex-col items-center gap-4 cursor-pointer group hover:border-cyan-500/30 transition-all" onClick={() => copyToClipboard(CONTRACT_ADDRESS, "Contract")}>
@@ -849,23 +838,6 @@ const App: React.FC = () => {
 
       <LogoGrid />
 
-      {/* Audit Section */}
-      <div className="mt-20 w-full max-w-4xl bg-[#0d1117]/60 border border-green-500/30 rounded-[3rem] p-10 md:p-14 text-center backdrop-blur-xl relative overflow-hidden group">
-         <div className="absolute inset-0 bg-green-500/5 blur-3xl rounded-full opacity-50"></div>
-         <div className="relative z-10 flex flex-col items-center gap-8 text-center">
-             <div className="flex flex-col md:flex-row items-center gap-6">
-                <ShieldCheck size={48} className="text-green-500" />
-                <h4 className="text-white font-black text-2xl md:text-4xl uppercase tracking-[0.2em] italic text-center">AUDITED BY CERTIK</h4>
-             </div>
-             <p className="text-gray-400 text-sm md:text-lg font-medium leading-relaxed max-w-2xl text-center">
-                The AIGODS smart contract {CONTRACT_ADDRESS.slice(0, 8)}... has successfully passed comprehensive security audits by CertiK, ensuring maximum safety for all investors.
-             </p>
-             <button className="bg-green-600/10 border border-green-500/30 text-green-500 font-black py-3 px-8 rounded-full flex items-center gap-3 hover:bg-green-500 hover:text-black transition-all text-xs uppercase tracking-widest">
-                VIEW AUDIT REPORT <ExternalLink size={14} />
-             </button>
-         </div>
-      </div>
-
       {/* Footer */}
       <div className="mt-40 w-full max-w-6xl px-4 border-t border-gray-900 pt-20">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
@@ -885,7 +857,7 @@ const App: React.FC = () => {
                 <Youtube size={36} className="transition-all hover:scale-110" style={{ color: '#FF0000' }} />
               </a>
             </div>
-            <p className="text-gray-600 text-xs font-black uppercase tracking-widest mt-4">Join the fastest growing decentralized AI community via contract {CONTRACT_ADDRESS.slice(0, 6)}...</p>
+            <p className="text-gray-600 text-xs font-black uppercase tracking-widest mt-4 text-center md:text-left">Join the fastest growing decentralized AI community via contract {CONTRACT_ADDRESS.slice(0, 6)}...</p>
           </div>
           <div className="space-y-8 text-center md:text-left">
             <h4 className="text-[#FF00FF] font-black text-2xl uppercase tracking-[0.2em] italic leading-none">INFLUENCER HUB</h4>
@@ -907,7 +879,7 @@ const App: React.FC = () => {
         <div className="mt-40 text-center pb-20 space-y-8 border-t border-gray-900/50 pt-16">
           <p className="text-gray-600 text-xs font-black tracking-[0.6em] uppercase text-center">© 2026 AI GODS – THE INTELLIGENCE LAYER OF WEB3</p>
           <p className="text-gray-700 text-[10px] md:text-xs font-bold leading-relaxed max-w-5xl mx-auto uppercase tracking-wide text-center">
-            AIGODS STANDS AT THE ABSOLUTE VANGUARD OF THE DECENTRALIZED INTELLIGENCE MOVEMENT, PIONEERING A MULTI-BILLION DOLLAR ECOSYSTEM ON POLYGON BACKED BY THE WORLD'S MOST INNOVATIVE GIANTS. AS WE BUILD THIS UNPARALLELED LEGACY, WE REMIND OUR VISIONARIES THAT THE DIGITAL FRONTIER IS VAST AND FULL OF OPPORTUNITY, YET REQUIRES WISE AND RESPONSIBLE PARTICIPATION. JOIN THE ELITE WHO ARE SCALING THE INTELLIGENCE LAYER OF WEB3—THE FUTURE BELONGS TO THE GODS OF AI.
+            AIGODS STANDS AT THE ABSOLUTE VANGUARD OF THE DECENTRALIZED INTELLIGENCE MOVEMENT, PIONEERING A MULTI-BILLION DOLLAR ECOSYSTEM ON POLYGON BACKED BY THE WORLD'S MOST INNOVATIVE GIANTS. AS WE BUILD THIS UNPARALLELED LEGACY, THE FUTURE BELONGS TO THE GODS OF AI.
           </p>
         </div>
       </div>
