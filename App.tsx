@@ -32,8 +32,22 @@ import LogoGrid from './components/LogoGrid';
 import ParticleBackground from './components/ParticleBackground';
 import ChatAssistant from './components/ChatAssistant';
 
+declare global {
+  interface Window {
+    ethers: any;
+    ethereum: any;
+  }
+}
+
 const App: React.FC = () => {
   const CONTRACT_ADDRESS = "0x7A9EEc905095228e2B5a66Dfb743F3772042f026";
+  const ABI = [
+    "function buyPreSale(address referrer) payable",
+    "function claimAirdrop()",
+    "function hasClaimedAirdrop(address user) view returns(bool)"
+  ];
+  const POLYGON_CHAIN_ID = 137;
+
   const [calcAmount, setCalcAmount] = useState<string>('');
   const [calcChain, setCalcChain] = useState<string>('BNB');
   const [calcStage, setCalcStage] = useState<string>('Stage 2');
@@ -89,12 +103,19 @@ const App: React.FC = () => {
     return (tokens * LAUNCH_PRICE).toLocaleString();
   }, [calculatedTokens]);
 
-  const copyToClipboard = (text: string, label: string = "Link") => {
-    if (!connectedAddress && label === "Link") {
-      handleNetworkClick('REFERRAL');
+  const copyToClipboard = async (text: string, label: string = "Link") => {
+    if (label === "Referral Link") {
+      if (!connectedAddress) {
+        alert("Connect wallet first!");
+        setIsWalletModalOpen(true);
+        return;
+      }
+      const link = `${window.location.origin}?ref=${connectedAddress}`;
+      await navigator.clipboard.writeText(link);
+      alert("Referral Link Copied: " + link);
       return;
     }
-    navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(text);
     alert(`${label} copied to clipboard!`);
   };
 
@@ -103,74 +124,137 @@ const App: React.FC = () => {
     setIsWalletModalOpen(true);
   };
 
-  const connectWallet = (walletName: string) => {
+  const connectWallet = async (walletName?: string) => {
     setIsConnecting(true);
-    setConnectingWalletName(walletName);
-    // Enhanced simulation for a "professional" feel across all wallets (Metamask, Trust, etc)
-    setTimeout(() => {
-      setConnectedAddress('0x71C...492b');
+    setConnectingWalletName(walletName || 'MetaMask');
+    try {
+      if (!window.ethereum) {
+        alert("MetaMask not found. Install MetaMask first.");
+        setIsConnecting(false);
+        return;
+      }
+
+      const provider = new window.ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+
+      const network = await provider.getNetwork();
+      if (Number(network.chainId) !== POLYGON_CHAIN_ID) {
+        alert("Please switch MetaMask to Polygon Mainnet (Chain ID 137).");
+        setIsConnecting(false);
+        return;
+      }
+
+      const userAddress = await signer.getAddress();
+      setConnectedAddress(userAddress);
+      setIsWalletModalOpen(false);
+      alert("Wallet Connected: " + userAddress);
+    } catch (err: any) {
+      alert("Wallet Connection Failed: " + err.message);
+    } finally {
       setIsConnecting(false);
       setConnectingWalletName(null);
-      setIsWalletModalOpen(false);
-      alert(`Wallet Linked! ${walletName} is now authorized to interact with contract ${CONTRACT_ADDRESS.slice(0, 10)}...`);
-    }, 2000);
+    }
   };
 
-  const handleBuyToken = () => {
+  const handleBuyToken = async () => {
     if (!connectedAddress) {
       setIsWalletModalOpen(true);
       return;
     }
-    const amountNum = parseFloat(buyAmount);
-    if (!buyAmount || isNaN(amountNum) || amountNum <= 0) {
+    
+    const amountStr = buyAmount || "0.01";
+    const amountNum = parseFloat(amountStr);
+    if (isNaN(amountNum) || amountNum <= 0) {
       alert("Please enter a valid purchase amount.");
       return;
     }
     
     setIsBuyProcessing(true);
-    // Simulating Real Polygon Smart Contract interaction
-    setTimeout(() => {
-      setIsBuyProcessing(false);
-      const usdValue = amountNum * (tokenPrices[activeNetwork || 'BNB'] || 1);
+    try {
+      const provider = new window.ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+      const params = new URLSearchParams(window.location.search);
+      let referrer = params.get("ref");
+      if (!referrer || !window.ethers.isAddress(referrer)) {
+        referrer = "0x0000000000000000000000000000000000000000";
+      }
+
+      const tx = await contract.buyPreSale(referrer, {
+        value: window.ethers.parseEther(amountStr)
+      });
+
+      await tx.wait();
+      alert("Presale Buy Successful!");
+      
+      const usdValue = amountNum * (tokenPrices[activeNetwork || 'MATIC'] || 1);
       const tokensBought = Math.floor(usdValue / STAGE_1_PRICE);
       setUserBalance(prev => prev + tokensBought);
-      alert(`CONGRATULATIONS! Transaction successful on Polygon. ${tokensBought.toLocaleString()} AIGODS tokens have been added to your balance via contract ${CONTRACT_ADDRESS}.`);
       setBuyAmount('');
-    }, 3500);
+    } catch (err: any) {
+      alert("Buy Failed: " + err.message);
+    } finally {
+      setIsBuyProcessing(false);
+    }
   };
 
   const verifySocialTask = (platform: 'twitter' | 'telegram' | 'youtube') => {
     setVerifyingTask(platform);
-    // Simulated "Auto-detection" logic
     setTimeout(() => {
       setSocialTasks(prev => ({ ...prev, [platform]: true }));
       setVerifyingTask(null);
     }, 2000);
   };
 
-  const handleClaimAirdrop = () => {
+  const handleClaimAirdrop = async () => {
     if (!connectedAddress) {
       setIsWalletModalOpen(true);
       return;
     }
-    if (claimedWallets.has(connectedAddress)) {
-      alert("This wallet has already claimed the 100 AIGODS free tokens.");
+    
+    if (!socialTasks.twitter || !socialTasks.telegram || !socialTasks.youtube) {
+      setIsAirdropModalOpen(true);
       return;
     }
-    setIsAirdropModalOpen(true);
+
+    try {
+      const provider = new window.ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+      const user = await signer.getAddress();
+      const claimed = await contract.hasClaimedAirdrop(user);
+
+      if (claimed) {
+        alert("You already claimed this airdrop.");
+        return;
+      }
+
+      setIsBuyProcessing(true);
+      const tx = await contract.claimAirdrop();
+      await tx.wait();
+
+      alert("Airdrop Claimed Successfully!");
+      setUserBalance(prev => prev + 100);
+      setClaimedWallets(prev => new Set(prev).add(user));
+      setIsAirdropModalOpen(false);
+    } catch (err: any) {
+      alert("Claim Failed: " + err.message);
+    } finally {
+      setIsBuyProcessing(false);
+    }
   };
 
   const finishAirdropClaim = () => {
     if (socialTasks.twitter && socialTasks.telegram && socialTasks.youtube) {
-      setClaimedWallets(prev => new Set(prev).add(connectedAddress!));
-      setUserBalance(prev => prev + 100);
-      alert(`Success! 100 AIGODS airdrop claimed via contract ${CONTRACT_ADDRESS}. Check your balance above.`);
-      setIsAirdropModalOpen(false);
+      handleClaimAirdrop();
     }
   };
 
   const referralLink = connectedAddress 
-    ? `${window.location.origin}?ref=${connectedAddress}&contract=${CONTRACT_ADDRESS}` 
+    ? `${window.location.origin}?ref=${connectedAddress}` 
     : "Connect wallet to generate referral link";
 
   const AIGODS_LOGO_URL = "https://images.pollinations.ai/prompt/exact-replica-of-a-cyborg-man-face-split-vertically-left-side-is-chrome-robot-skull-right-side-is-glowing-gold-bitcoin-symbol-both-eyes-glowing-neon-blue-full-grey-beard-surrounded-by-intense-raging-orange-fire-and-flames-at-the-bottom-large-glowing-golden-text-AIGOD%27S-cinematic-lighting-hyper-detailed-8k?width=512&height=512&nologo=true";
@@ -192,7 +276,7 @@ const App: React.FC = () => {
            <div className="w-[1px] h-8 bg-gray-800 mx-2"></div>
            <div className="flex flex-col items-end">
               <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">CONNECTED</span>
-              <span className="text-xs font-mono text-cyan-500">{connectedAddress}</span>
+              <span className="text-xs font-mono text-cyan-500" id="walletAddress">{connectedAddress}</span>
            </div>
         </div>
       )}
@@ -222,7 +306,7 @@ const App: React.FC = () => {
             </div>
             
             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6 text-center">
-              Select your wallet for <span className="text-cyan-400">{activeNetwork || 'All Networks'}</span>
+              Select your wallet for <span className="text-cyan-400">{activeNetwork || 'Polygon Mainnet'}</span>
             </p>
 
             <div className="space-y-4">
@@ -767,9 +851,9 @@ const App: React.FC = () => {
       {/* Payment Selection Section */}
       <div className="mt-20 w-full max-w-4xl px-4 flex flex-col items-center">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full mb-12">
-            <button onClick={() => handleNetworkClick('BNB')} className="bg-[#F3BA2F] text-black font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">BNB CHAIN</button>
-            <button onClick={() => handleNetworkClick('POLYGON')} className="bg-[#8247E5] text-white font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">POLYGON</button>
-            <button onClick={() => handleNetworkClick('SOLANA')} className="bg-white text-black font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">SOLANA</button>
+            <button onClick={() => connectWallet('BNB')} className="bg-[#F3BA2F] text-black font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">BNB CHAIN</button>
+            <button onClick={() => connectWallet('POLYGON')} className="bg-[#8247E5] text-white font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">POLYGON</button>
+            <button onClick={() => connectWallet('SOLANA')} className="bg-white text-black font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-sm tracking-widest">SOLANA</button>
             <div className="relative group w-full">
                 <button className="w-full bg-[#0070F3] text-white font-black py-4 rounded-xl hover:scale-105 transition-all uppercase text-xs tracking-tighter flex items-center justify-center gap-2 text-center">
                     <CreditCard size={16} /> DEBIT/CREDIT
@@ -829,7 +913,7 @@ const App: React.FC = () => {
             <span className="truncate">{referralLink}</span>
             <Lock size={16} />
           </div>
-          <button onClick={() => copyToClipboard(referralLink)} className="bg-white text-black py-6 px-12 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:scale-105 transition-transform">
+          <button onClick={() => copyToClipboard(referralLink, "Referral Link")} className="bg-white text-black py-6 px-12 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:scale-105 transition-transform">
             <Copy size={20} /> Copy Link
           </button>
         </div>
