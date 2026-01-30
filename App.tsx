@@ -46,13 +46,14 @@ const App: React.FC = () => {
     "function claimAirdrop()",
     "function hasClaimedAirdrop(address user) view returns(bool)"
   ];
-  const POLYGON_CHAIN_ID = 137;
+  const POLYGON_CHAIN_ID = "0x89"; // 137 in hex
 
   const [calcAmount, setCalcAmount] = useState<string>('');
   const [calcChain, setCalcChain] = useState<string>('BNB');
   const [calcStage, setCalcStage] = useState<string>('Stage 2');
   const [buyAmount, setBuyAmount] = useState<string>('');
   const [userBalance, setUserBalance] = useState<number>(0);
+  const [nativeBalance, setNativeBalance] = useState<string>("0");
 
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
@@ -62,7 +63,7 @@ const App: React.FC = () => {
   const [activeNetwork, setActiveNetwork] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingWalletName, setConnectingWalletName] = useState<string | null>(null);
-  const [claimedWallets, setClaimedWallets] = useState<Set<string>>(new Set());
+  const [hasClaimed, setHasClaimed] = useState(false);
 
   // Social Task State
   const [isAirdropModalOpen, setIsAirdropModalOpen] = useState(false);
@@ -84,6 +85,28 @@ const App: React.FC = () => {
     'SOL': 150,
     'MATIC': 0.70,
     'USD': 1
+  };
+
+  // Check connection status and balance on change
+  useEffect(() => {
+    if (connectedAddress) {
+      updateBlockchainData();
+    }
+  }, [connectedAddress]);
+
+  const updateBlockchainData = async () => {
+    if (!window.ethereum || !connectedAddress) return;
+    try {
+      const provider = new window.ethers.BrowserProvider(window.ethereum);
+      const balance = await provider.getBalance(connectedAddress);
+      setNativeBalance(window.ethers.formatEther(balance));
+
+      const contract = new window.ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+      const claimed = await contract.hasClaimedAirdrop(connectedAddress);
+      setHasClaimed(claimed);
+    } catch (e) {
+      console.error("Failed to fetch chain data", e);
+    }
   };
 
   const calculatedTokens = useMemo(() => {
@@ -124,33 +147,64 @@ const App: React.FC = () => {
     setIsWalletModalOpen(true);
   };
 
+  const switchNetwork = async () => {
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: POLYGON_CHAIN_ID }],
+      });
+      return true;
+    } catch (switchError: any) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: POLYGON_CHAIN_ID,
+              chainName: 'Polygon Mainnet',
+              nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+              rpcUrls: ['https://polygon-rpc.com/'],
+              blockExplorerUrls: ['https://polygonscan.com/'],
+            }],
+          });
+          return true;
+        } catch (addError) {
+          return false;
+        }
+      }
+      return false;
+    }
+  };
+
   const connectWallet = async (walletName?: string) => {
+    if (!window.ethereum) {
+      alert("No crypto wallet detected. Please install MetaMask.");
+      return;
+    }
+
     setIsConnecting(true);
     setConnectingWalletName(walletName || 'MetaMask');
+    
     try {
-      if (!window.ethereum) {
-        alert("MetaMask not found. Install MetaMask first.");
-        setIsConnecting(false);
-        return;
-      }
-
       const provider = new window.ethers.BrowserProvider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
-
+      
+      // Ensure we are on Polygon
       const network = await provider.getNetwork();
-      if (Number(network.chainId) !== POLYGON_CHAIN_ID) {
-        alert("Please switch MetaMask to Polygon Mainnet (Chain ID 137).");
-        setIsConnecting(false);
-        return;
+      if (network.chainId !== BigInt(137)) {
+        const switched = await switchNetwork();
+        if (!switched) {
+          alert("Please switch to Polygon network to continue.");
+          setIsConnecting(false);
+          return;
+        }
       }
 
-      const userAddress = await signer.getAddress();
-      setConnectedAddress(userAddress);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      setConnectedAddress(accounts[0]);
       setIsWalletModalOpen(false);
-      alert("Wallet Connected: " + userAddress);
     } catch (err: any) {
-      alert("Wallet Connection Failed: " + err.message);
+      console.error(err);
+      alert("Connection Failed: " + (err.message || "User rejected"));
     } finally {
       setIsConnecting(false);
       setConnectingWalletName(null);
@@ -163,10 +217,10 @@ const App: React.FC = () => {
       return;
     }
     
-    const amountStr = buyAmount || "0.01";
+    const amountStr = buyAmount || "1"; // Default 1 MATIC for test
     const amountNum = parseFloat(amountStr);
     if (isNaN(amountNum) || amountNum <= 0) {
-      alert("Please enter a valid purchase amount.");
+      alert("Please enter a valid MATIC amount.");
       return;
     }
     
@@ -187,14 +241,11 @@ const App: React.FC = () => {
       });
 
       await tx.wait();
-      alert("Presale Buy Successful!");
-      
-      const usdValue = amountNum * (tokenPrices[activeNetwork || 'MATIC'] || 1);
-      const tokensBought = Math.floor(usdValue / STAGE_1_PRICE);
-      setUserBalance(prev => prev + tokensBought);
+      alert("Presale Purchase Successful! Tokens will be distributed after TGE.");
+      updateBlockchainData();
       setBuyAmount('');
     } catch (err: any) {
-      alert("Buy Failed: " + err.message);
+      alert("Purchase Failed: " + (err.reason || err.message));
     } finally {
       setIsBuyProcessing(false);
     }
@@ -219,29 +270,26 @@ const App: React.FC = () => {
       return;
     }
 
+    if (hasClaimed) {
+      alert("You have already claimed your airdrop tokens.");
+      return;
+    }
+
+    setIsBuyProcessing(true);
     try {
       const provider = new window.ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new window.ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
 
-      const user = await signer.getAddress();
-      const claimed = await contract.hasClaimedAirdrop(user);
-
-      if (claimed) {
-        alert("You already claimed this airdrop.");
-        return;
-      }
-
-      setIsBuyProcessing(true);
       const tx = await contract.claimAirdrop();
       await tx.wait();
 
       alert("Airdrop Claimed Successfully!");
-      setUserBalance(prev => prev + 100);
-      setClaimedWallets(prev => new Set(prev).add(user));
+      setHasClaimed(true);
       setIsAirdropModalOpen(false);
+      updateBlockchainData();
     } catch (err: any) {
-      alert("Claim Failed: " + err.message);
+      alert("Claim Failed: " + (err.reason || err.message));
     } finally {
       setIsBuyProcessing(false);
     }
@@ -268,16 +316,29 @@ const App: React.FC = () => {
 
       {/* Persistent User Info (Top Center) */}
       {connectedAddress && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-black/60 backdrop-blur-xl border border-cyan-500/30 px-6 py-3 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.2)] animate-in slide-in-from-top-4 duration-500">
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-4 bg-black/60 backdrop-blur-xl border border-cyan-500/30 px-6 py-3 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.2)] animate-in slide-in-from-top-4 duration-500">
            <div className="flex flex-col items-center">
-              <span className="text-[10px] text-cyan-400 font-black uppercase tracking-widest">YOUR AIGODS BALANCE</span>
-              <span className="text-xl font-black text-white">{userBalance.toLocaleString()}</span>
+              <span className="text-[10px] text-cyan-400 font-black uppercase tracking-widest">WALLET MATIC</span>
+              <span className="text-xl font-black text-white">{parseFloat(nativeBalance).toFixed(4)}</span>
            </div>
            <div className="w-[1px] h-8 bg-gray-800 mx-2"></div>
            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">CONNECTED</span>
-              <span className="text-xs font-mono text-cyan-500" id="walletAddress">{connectedAddress}</span>
+              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">ADDRESS</span>
+              <span className="text-xs font-mono text-cyan-500" id="walletAddress">{connectedAddress.slice(0,6)}...{connectedAddress.slice(-4)}</span>
            </div>
+        </div>
+      )}
+
+      {/* Top Right Connect Button */}
+      {!connectedAddress && (
+        <div className="fixed top-8 right-8 z-[70]">
+          <button 
+            onClick={() => setIsWalletModalOpen(true)}
+            className="bg-cyan-500 text-black font-black px-8 py-4 rounded-2xl flex items-center gap-3 hover:scale-105 transition-all shadow-[0_0_30px_rgba(6,182,212,0.5)] group"
+          >
+            <Wallet size={20} />
+            <span className="tracking-widest uppercase text-sm">Connect Wallet</span>
+          </button>
         </div>
       )}
 
@@ -306,16 +367,14 @@ const App: React.FC = () => {
             </div>
             
             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6 text-center">
-              Select your wallet for <span className="text-cyan-400">{activeNetwork || 'Polygon Mainnet'}</span>
+              Connect to <span className="text-cyan-400">Polygon Mainnet</span>
             </p>
 
             <div className="space-y-4">
               {[
-                { name: 'MetaMask', icon: 'https://cryptologos.cc/logos/metamask-mask-logo.svg', chain: 'BNB/Polygon' },
-                { name: 'Phantom', icon: 'https://images.pollinations.ai/prompt/phantom-wallet-ghost-logo-symbol-vector-white-on-black?width=64&height=64&nologo=true', chain: 'Solana' },
-                { name: 'Trust Wallet', icon: 'https://cryptologos.cc/logos/trust-wallet-twt-logo.svg', chain: 'Multi' },
-                { name: 'Coinbase Wallet', icon: 'https://cryptologos.cc/logos/coinbase-coin-coin-logo.svg', chain: 'Multi' },
-                { name: 'Solflare', icon: 'https://images.pollinations.ai/prompt/solflare-wallet-logo-vector-style?width=64&height=64&nologo=true', chain: 'Solana' },
+                { name: 'MetaMask', icon: 'https://cryptologos.cc/logos/metamask-mask-logo.svg', chain: 'Polygon / Multi' },
+                { name: 'Trust Wallet', icon: 'https://cryptologos.cc/logos/trust-wallet-twt-logo.svg', chain: 'Polygon / Multi' },
+                { name: 'Coinbase Wallet', icon: 'https://cryptologos.cc/logos/coinbase-coin-coin-logo.svg', chain: 'Polygon / Multi' },
               ].map((wallet) => (
                 <button 
                   key={wallet.name}
@@ -333,7 +392,7 @@ const App: React.FC = () => {
                   {isConnecting && connectingWalletName === wallet.name ? (
                     <div className="flex flex-col items-end">
                       <Loader2 size={16} className="animate-spin text-cyan-400 mb-1" />
-                      <span className="text-[6px] text-cyan-400 font-black uppercase">Syncing {wallet.name}...</span>
+                      <span className="text-[6px] text-cyan-400 font-black uppercase">Syncing...</span>
                     </div>
                   ) : <ChevronRight size={20} className="text-gray-600 group-hover:text-cyan-400" />}
                 </button>
@@ -354,7 +413,7 @@ const App: React.FC = () => {
             </p>
             
             <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-4 mb-8 text-center cursor-pointer hover:bg-cyan-500/20 transition-all" onClick={() => copyToClipboard(CONTRACT_ADDRESS, "Contract")}>
-              <p className="text-[10px] text-cyan-500 font-black uppercase tracking-widest mb-1">CLAIM VIA POLYGON CONTRACT</p>
+              <p className="text-[10px] text-cyan-500 font-black uppercase tracking-widest mb-1">POLYGON CONTRACT</p>
               <p className="text-xs text-white font-mono break-all">{CONTRACT_ADDRESS}</p>
             </div>
 
@@ -438,255 +497,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Referral Leaderboard Modal */}
-      {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-3xl" onClick={() => setIsLeaderboardOpen(false)}></div>
-          <div className="relative w-full max-w-4xl bg-[#050508] border border-yellow-500/30 rounded-[3rem] p-8 md:p-12 animate-in zoom-in-95 duration-300 overflow-y-auto max-h-[90vh] scrollbar-hide">
-            
-            <div className="flex justify-between items-start mb-12">
-              <div className="space-y-2">
-                <h2 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter text-yellow-500">
-                  REFERRAL LEGENDS 👑
-                </h2>
-                <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-[10px] md:text-xs">
-                  Scaling the AIGODS Empire. Reward Distribution at TGE.
-                </p>
-              </div>
-              <button onClick={() => setIsLeaderboardOpen(false)} className="p-3 bg-gray-900 rounded-full hover:text-red-500 transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-
-            {/* Price Target Card */}
-            <div className="mb-12 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 border border-yellow-500/20 p-8 rounded-[2rem] text-center">
-              <p className="text-yellow-500 font-black text-xs uppercase tracking-[0.4em] mb-2">LAUNCH PRICE TARGET</p>
-              <div className="text-6xl font-black text-white">$3.50</div>
-              <p className="mt-4 text-gray-500 text-[10px] font-black uppercase tracking-widest">Rewards Valued at Current Target Listing Price</p>
-              <div className="mt-6 inline-flex items-center gap-4 bg-black/40 px-6 py-3 rounded-xl border border-yellow-500/20 cursor-pointer hover:border-yellow-500/50 transition-all" onClick={() => copyToClipboard(CONTRACT_ADDRESS, "Contract")}>
-                <span className="text-yellow-500/50 font-black text-[10px] uppercase tracking-widest">POLYGON CONTRACT:</span>
-                <span className="text-white font-mono text-xs">{CONTRACT_ADDRESS}</span>
-                <Copy size={14} className="text-yellow-500" />
-              </div>
-            </div>
-
-            {/* Leaderboard Table */}
-            <div className="space-y-6">
-              {[
-                { address: '0x82...f91a', referrals: 428, reward: '100,000 AIGODS', value: '$350,000', icon: Crown, color: '#EAB308', pos: '1st' },
-                { address: '0x4c...2b99', referrals: 312, reward: '50,000 AIGODS', value: '$175,000', icon: Medal, color: '#94A3B8', pos: '2nd' },
-                { address: '0x1a...e888', referrals: 195, reward: '20,000 AIGODS', value: '$70,000', icon: Medal, color: '#B45309', pos: '3rd' },
-              ].map((item, idx) => (
-                <div key={idx} className="bg-white/5 border border-white/10 p-6 md:p-10 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-8 transition-all hover:border-yellow-500/40 group">
-                  <div className="flex items-center gap-8">
-                    <div className="relative">
-                      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-2 flex items-center justify-center text-2xl font-black" style={{ borderColor: item.color, color: item.color }}>
-                        {item.pos}
-                      </div>
-                      <item.icon className="absolute -top-3 -right-3 text-yellow-500 animate-bounce" size={28} />
-                    </div>
-                    <div>
-                      <span className="block text-gray-500 font-black text-[10px] uppercase tracking-widest mb-1">ARCHITECT ADDRESS</span>
-                      <span className="text-xl md:text-2xl font-black text-white font-mono">{item.address}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-center md:text-right space-y-2">
-                    <div className="text-gray-500 font-black text-[10px] uppercase tracking-widest">REFERRALS: <span className="text-white">{item.referrals}</span></div>
-                    <div className="text-2xl md:text-3xl font-black" style={{ color: item.color }}>{item.reward}</div>
-                    <div className="text-green-500 font-black text-sm uppercase tracking-widest">Est. Value: {item.value}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-12 text-center space-y-8">
-               <p className="text-gray-500 text-xs font-bold uppercase leading-relaxed max-w-2xl mx-auto">
-                 Rewards are based on total volume referred through contract <span className="text-white">{CONTRACT_ADDRESS}</span>. Winners will be announced on all social media platforms at launch.
-               </p>
-               <button 
-                 onClick={() => {
-                   setIsLeaderboardOpen(false);
-                   handleNetworkClick('REFERRAL');
-                 }}
-                 className="bg-white text-black font-black py-5 px-12 rounded-2xl uppercase text-sm tracking-widest hover:scale-105 transition-all shadow-[0_0_50px_rgba(255,255,255,0.2)]"
-               >
-                 BOOST YOUR RANK NOW
-               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Whitepaper Modal */}
-      {isWhitepaperOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/98 backdrop-blur-3xl" onClick={() => setIsWhitepaperOpen(false)}></div>
-          <div className="relative w-full max-w-5xl max-h-[95vh] bg-[#050508] border border-gray-800/60 rounded-[3rem] overflow-y-auto shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-300 scrollbar-hide">
-            
-            {/* Modal Header Warning */}
-            <div className="sticky top-0 z-20 bg-yellow-500/10 border-b border-yellow-500/20 py-4 text-center px-4">
-               <p className="text-yellow-500 font-black text-[10px] md:text-xs uppercase tracking-widest leading-tight">
-                 NOTE: THIS IS THE PRE-SALE WHITE PAPER. THE MAIN WHITE PAPER WILL BE ARRIVING SOON AFTER LAUNCHING.
-               </p>
-            </div>
-
-            <div className="p-8 md:p-16 space-y-12">
-              
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-yellow-500/20 blur-xl rounded-full"></div>
-                    <img src={AIGODS_LOGO_URL} className="w-20 h-20 md:w-28 md:h-28 rounded-full border-2 border-yellow-500/40 relative z-10 object-cover" alt="Logo" />
-                  </div>
-                  <div>
-                    <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">AI GODS (AIGODS)</h2>
-                    <p className="text-cyan-400 font-black tracking-[0.3em] text-[10px] md:text-xs uppercase mt-2">PRE-SALE & AIRDROP WHITEPAPER</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsWhitepaperOpen(false)} className="p-4 bg-gray-900 rounded-full text-gray-500 hover:text-white transition-all">
-                  <X size={24} />
-                </button>
-              </div>
-
-              <h3 className="text-4xl md:text-6xl font-black italic text-center uppercase tracking-tighter leading-tight text-center">
-                THE FUTURE IS NOW – BECOME A GOD IN CRYPTO 👑
-              </h3>
-
-              <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-                 <div className="flex items-center gap-3">
-                    <Award size={24} className="text-yellow-500" />
-                    <span className="text-xs text-white font-black uppercase tracking-widest">Verified Polygon Smart Contract:</span>
-                 </div>
-                 <code className="text-[10px] text-yellow-500 font-mono bg-black/40 px-3 py-1 rounded-lg">{CONTRACT_ADDRESS}</code>
-              </div>
-
-              {/* Image Placeholder */}
-              <div className="w-full aspect-video bg-black/40 rounded-[2rem] border border-gray-900 flex flex-col items-center justify-center text-center p-10 relative group overflow-hidden">
-                  <img src={AIGODS_LOGO_URL} className="w-full h-full absolute inset-0 object-cover opacity-10" alt="Titan Preview" />
-                  <p className="text-gray-600 text-[10px] md:text-xs font-black italic uppercase tracking-[0.2em] relative z-10">
-                    A MAJESTIC BEARDED TITAN, HALF CYBERNETIC HUMAN, HALF BLAZING AIGODS SYMBOL
-                  </p>
-              </div>
-
-              <div className="space-y-12">
-                {/* Section 1 */}
-                <section className="space-y-6">
-                  <h4 className="text-xl md:text-2xl font-black text-cyan-400 uppercase italic flex items-center gap-4">
-                    <span className="bg-cyan-500 text-black px-3 py-1 rounded-lg not-italic text-lg">1</span>
-                    INTRODUCTION – WELCOME TO AI GODS
-                  </h4>
-                  <p className="text-gray-300 text-sm md:text-lg font-bold leading-relaxed">
-                    AI GODS is not just another token. It is a revolutionary decentralized voice intelligence reward system—empowering real-world AI applications with voice-powered intelligence, smart automation, and community-driven innovation.
-                  </p>
-                  <p className="text-gray-500 text-xs md:text-sm font-black uppercase tracking-widest leading-loose">
-                    Built for the AI era through alignment with industry Titans & Innovators: <br/>
-                    <span className="text-white">BlackRock • Tesla • OpenAI • Microsoft • Nvidia • Google • Apple • X (Twitter) • and more.</span>
-                  </p>
-
-                  <div className="bg-cyan-900/10 border-l-4 border-cyan-500 p-8 rounded-r-3xl italic relative overflow-hidden group">
-                    <Globe className="absolute -right-4 -bottom-4 text-cyan-500/10 w-32 h-32" />
-                    <p className="text-white text-lg md:text-xl font-bold relative z-10 leading-relaxed">
-                      "With over $10 billion in committed ecosystem capital, AI GODS is positioned to dominate the intersection of artificial intelligence and cryptocurrency."
-                    </p>
-                  </div>
-
-                  <p className="text-yellow-500 text-xs md:text-sm font-black italic tracking-wide uppercase leading-relaxed text-center">
-                    AI GODS is here to create massive awareness in the world of crypto. Stay up, get ready to be rich, and retire early. <br/>
-                    <span className="text-yellow-400">The future is NOW – AIGODS COIN OFFICIAL IS THE KING! 👑</span>
-                  </p>
-                </section>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
-                  {/* Section 2 */}
-                  <section className="bg-[#0a0a0f] border border-gray-900 p-8 rounded-[2.5rem] space-y-6">
-                    <h4 className="text-xl md:text-2xl font-black text-[#FF00FF] uppercase italic flex items-center gap-4">
-                      <span className="bg-[#FF00FF] text-black px-3 py-1 rounded-lg not-italic text-lg">2</span>
-                      TOKEN DETAILS
-                    </h4>
-                    <div className="space-y-4 font-black uppercase text-[10px] md:text-xs">
-                       <div className="flex justify-between border-b border-gray-900 pb-2"><span className="text-gray-500">TOKEN NAME</span> <span className="text-white">AI GODS</span></div>
-                       <div className="flex justify-between border-b border-gray-900 pb-2"><span className="text-gray-500">SYMBOL</span> <span className="text-white">AIGODS</span></div>
-                       <div className="flex justify-between border-b border-gray-900 pb-2"><span className="text-gray-500">TOTAL SUPPLY</span> <span className="text-white">700,000,000</span></div>
-                       <div className="flex justify-between border-b border-gray-900 pb-2"><span className="text-gray-500">DECIMALS</span> <span className="text-white">18</span></div>
-                       <div className="flex justify-between border-b border-gray-900 pb-2"><span className="text-gray-500">BLOCKCHAIN</span> <span className="text-white">BNB, Polygon, Solana</span></div>
-                       <div className="flex justify-between border-b border-gray-900 pb-2 cursor-pointer group" onClick={() => copyToClipboard(CONTRACT_ADDRESS, "Contract")}>
-                          <span className="text-gray-500 group-hover:text-cyan-400 transition-colors">POLYGON CONTRACT</span> 
-                          <span className="text-white font-mono group-hover:underline">0x7A9E...f026</span>
-                       </div>
-                    </div>
-                    <div className="pt-4 space-y-4">
-                       <p className="text-[#FF00FF] font-black text-[10px] uppercase tracking-widest text-center">ALLOCATION</p>
-                       <div className="bg-gray-900/40 p-4 rounded-xl border border-gray-800 flex justify-between items-center text-center">
-                          <span className="text-white font-black text-xs uppercase w-full">80% – Pre-Sale (Community)</span>
-                       </div>
-                       <div className="bg-gray-900/40 p-4 rounded-xl border border-gray-800 flex justify-between items-center text-center">
-                          <span className="text-white font-black text-xs uppercase w-full">20% – Team & Ecosystem</span>
-                       </div>
-                    </div>
-                  </section>
-
-                  {/* Section 3 */}
-                  <section className="bg-[#0a0a0f] border border-gray-900 p-8 rounded-[2.5rem] space-y-6">
-                    <h4 className="text-xl md:text-2xl font-black text-yellow-500 uppercase italic flex items-center gap-4">
-                      <span className="bg-yellow-500 text-black px-3 py-1 rounded-lg not-italic text-lg">3</span>
-                      PRE-SALE STAGES
-                    </h4>
-                    <div className="space-y-4 text-center">
-                       <div className="bg-cyan-950/20 border border-cyan-500/20 p-6 rounded-2xl">
-                          <p className="text-cyan-400 font-black text-[8px] uppercase tracking-widest mb-1">STAGE 1 – EARLY BIRD</p>
-                          <p className="text-xl md:text-2xl font-black">$0.20 per AIGODS</p>
-                          <p className="text-cyan-500 font-black text-[8px] uppercase tracking-widest mt-1 italic">17.5X POTENTIAL UPSIDE</p>
-                       </div>
-                       <div className="bg-purple-950/20 border border-purple-500/20 p-6 rounded-2xl">
-                          <p className="text-purple-400 font-black text-[8px] uppercase tracking-widest mb-1">STAGE 2 – ACCUMULATION</p>
-                          <p className="text-xl md:text-2xl font-black">$0.80 per AIGODS</p>
-                          <p className="text-purple-500 font-black text-[8px] uppercase tracking-widest mt-1 italic">4.375X POTENTIAL UPSIDE</p>
-                       </div>
-                       <div className="bg-gray-900 p-6 rounded-2xl">
-                          <p className="text-gray-500 font-black text-[8px] uppercase tracking-widest mb-1">TARGET LISTING PRICE</p>
-                          <p className="text-3xl font-black text-white">$3.50</p>
-                       </div>
-                    </div>
-                  </section>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Section 4 */}
-                  <section className="bg-gray-900/20 border border-gray-900 p-8 rounded-[2.5rem] space-y-6">
-                     <h4 className="text-xl font-black text-cyan-400 uppercase italic">4. EASY PURCHASE OPTIONS</h4>
-                     <p className="text-gray-400 text-xs md:text-sm font-medium leading-relaxed">
-                        Buy with BNB, Polygon, or Solana via contract <code className="text-white">{CONTRACT_ADDRESS}</code>. No crypto? No problem. Purchase instantly using <span className="text-white font-black">Debit or Credit Card</span>.
-                     </p>
-                     <button onClick={() => handleNetworkClick('BNB')} className="w-full bg-cyan-500 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest hover:scale-105 transition-all">BUY AIGODS NOW</button>
-                  </section>
-                  
-                  {/* Section 5 */}
-                  <section className="bg-gray-900/20 border border-gray-900 p-8 rounded-[2.5rem] space-y-6">
-                     <h4 className="text-xl font-black text-green-400 uppercase italic">5. FREE AIRDROP</h4>
-                     <p className="text-gray-400 text-xs md:text-sm font-medium leading-relaxed">
-                        100 AIGODS FREE per eligible wallet claimable through our verified Polygon portal. At listing price, this is <span className="text-white font-black">$350 potential value</span>.
-                     </p>
-                     <button onClick={handleClaimAirdrop} className="w-full bg-green-500 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest hover:scale-105 transition-all">CLAIM FREE 100 AIGODS</button>
-                  </section>
-                </div>
-
-                <div className="text-center space-y-10 pt-10 pb-20">
-                    <h2 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase leading-none text-white">
-                      AI GODS – The Future is Here. <br/>
-                      <span className="text-yellow-500">Be Rich. Retire Early. Rule the Crypto World. 👑</span>
-                    </h2>
-                    <button onClick={() => setIsWhitepaperOpen(false)} className="bg-gray-800 text-gray-400 font-black py-4 px-12 rounded-xl uppercase text-xs tracking-[0.2em] hover:text-white transition-all">
-                      CLOSE WHITE PAPER
-                    </button>
-                </div>
-
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Hero Badge */}
       <div className="bg-gradient-cyan-magenta text-black text-xl md:text-5xl font-black px-12 py-6 md:py-8 rounded-[3rem] mb-12 tracking-[0.1em] md:tracking-[0.2em] uppercase shadow-2xl animate-pulse text-center mt-64 md:mt-32 w-[95%] md:w-auto italic">
         LAUNCHING SOON – 10$ BILLION+ BACKED
@@ -725,7 +535,6 @@ const App: React.FC = () => {
         </h2>
         
         <div className="flex flex-col gap-6 mb-16 items-center">
-          {/* Card 1 */}
           <div className="w-full bg-[#0d1117]/60 p-10 rounded-[2.5rem] border border-gray-800/50 backdrop-blur-xl transition-transform hover:scale-[1.02]">
             <span className="block text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-center">STAGE 1 PRICE</span>
             <span className="text-7xl font-black text-white text-center block">$0.20</span>
@@ -736,14 +545,12 @@ const App: React.FC = () => {
             <p className="mt-4 text-[10px] text-gray-600 font-mono break-all text-center">{CONTRACT_ADDRESS}</p>
           </div>
 
-          {/* Card 2 */}
           <div className="w-full bg-[#0d1117]/40 p-10 rounded-[2.5rem] border border-gray-800/30 backdrop-blur-xl opacity-60">
             <span className="block text-gray-600 text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-center">STAGE 2 PRICE</span>
             <span className="text-7xl font-black text-white text-center block">$0.80</span>
             <div className="mt-4 text-gray-500 font-black text-xs uppercase tracking-widest italic text-center">NEXT PHASE</div>
           </div>
 
-          {/* Card 3 (Final) */}
           <div className="w-full bg-[#0d1117]/80 p-10 rounded-[2.5rem] border-2 border-cyan-400 backdrop-blur-2xl shadow-[0_0_50px_rgba(34,211,238,0.2)]">
             <span className="block text-cyan-400 text-[10px] font-black uppercase tracking-[0.3em] mb-2 text-center">FINAL LAUNCH PRICE</span>
             <span className="text-8xl md:text-9xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] text-center block">
@@ -751,22 +558,6 @@ const App: React.FC = () => {
             </span>
             <div className="mt-4 text-white/40 font-black text-sm uppercase tracking-[0.4em] text-center">Q4 2026</div>
           </div>
-        </div>
-
-        {/* Returns Section */}
-        <div className="w-full bg-black/60 rounded-[3rem] p-10 border border-gray-800 flex flex-col md:flex-row items-center divide-y md:divide-y-0 md:divide-x divide-gray-800">
-            <div className="flex-1 w-full p-8 space-y-2 text-center">
-                <div className="text-5xl md:text-6xl font-black text-white">17.5X</div>
-                <div className="text-green-500 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-                    <span className="opacity-40">→</span> STAGE 1 RETURNS
-                </div>
-            </div>
-            <div className="flex-1 w-full p-8 space-y-2 text-center">
-                <div className="text-5xl md:text-6xl font-black text-white">4.375X</div>
-                <div className="text-green-500 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-                    <span className="opacity-40">→</span> STAGE 2 RETURNS <span className="opacity-40">←</span>
-                </div>
-            </div>
         </div>
       </div>
 
@@ -867,7 +658,7 @@ const App: React.FC = () => {
             <div className="lg:col-span-7 bg-[#0d1117]/40 border border-gray-800 rounded-[2rem] p-4 flex items-center relative group overflow-hidden">
                 <input 
                   type="text" 
-                  placeholder="Amount (BNB/SOL/MATIC/USD)"
+                  placeholder="Amount in MATIC"
                   className="w-full bg-transparent border-none text-white font-black text-2xl md:text-3xl px-8 focus:outline-none placeholder:text-gray-700 z-10 text-center"
                   value={buyAmount}
                   onChange={(e) => setBuyAmount(e.target.value)}
@@ -878,7 +669,7 @@ const App: React.FC = () => {
               className="lg:col-span-5 bg-gradient-to-r from-[#FF00FF] to-[#00FFFF] text-black font-black py-8 px-12 rounded-[2rem] text-2xl md:text-3xl hover:scale-[1.03] transition-all shadow-[0_0_60px_rgba(0,255,255,0.3)] flex flex-col items-center justify-center leading-none text-center group"
             >
                 <span className="mb-1 uppercase italic">PURCHASE NOW</span>
-                <span className="text-[8px] font-black uppercase tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity">POLY CONTRACT: 0x7A9E...f026</span>
+                <span className="text-[8px] font-black uppercase tracking-[0.3em] opacity-60 group-hover:opacity-100 transition-opacity">POLYGON CONTRACT: {CONTRACT_ADDRESS.slice(0, 10)}...</span>
             </button>
         </div>
 
@@ -887,7 +678,7 @@ const App: React.FC = () => {
           onClick={handleClaimAirdrop}
           className="w-full bg-[#22C55E] text-black font-black py-10 rounded-[2.5rem] text-3xl md:text-5xl hover:scale-[1.02] transition-all shadow-[0_0_80px_rgba(34,197,94,0.3)] mb-20 uppercase tracking-tighter text-center italic"
         >
-          CLAIM 100 AIGODS FREE
+          {hasClaimed ? 'AIRDROP CLAIMED ✓' : 'CLAIM 100 AIGODS FREE'}
         </button>
       </div>
 
@@ -941,7 +732,6 @@ const App: React.FC = () => {
                 <Youtube size={36} className="transition-all hover:scale-110" style={{ color: '#FF0000' }} />
               </a>
             </div>
-            <p className="text-gray-600 text-xs font-black uppercase tracking-widest mt-4 text-center md:text-left">Join the fastest growing decentralized AI community via contract {CONTRACT_ADDRESS.slice(0, 6)}...</p>
           </div>
           <div className="space-y-8 text-center md:text-left">
             <h4 className="text-[#FF00FF] font-black text-2xl uppercase tracking-[0.2em] italic leading-none">INFLUENCER HUB</h4>
@@ -956,15 +746,11 @@ const App: React.FC = () => {
                 <Globe size={36} className="transition-all hover:scale-110" style={{ color: '#00FFFF' }} />
               </a>
             </div>
-            <p className="text-gray-600 text-xs font-black uppercase tracking-widest mt-4">Bridging the gap between titans and the future.</p>
           </div>
         </div>
         
         <div className="mt-40 text-center pb-20 space-y-8 border-t border-gray-900/50 pt-16">
           <p className="text-gray-600 text-xs font-black tracking-[0.6em] uppercase text-center">© 2026 AI GODS – THE INTELLIGENCE LAYER OF WEB3</p>
-          <p className="text-gray-700 text-[10px] md:text-xs font-bold leading-relaxed max-w-5xl mx-auto uppercase tracking-wide text-center">
-            AIGODS STANDS AT THE ABSOLUTE VANGUARD OF THE DECENTRALIZED INTELLIGENCE MOVEMENT, PIONEERING A MULTI-BILLION DOLLAR ECOSYSTEM ON POLYGON BACKED BY THE WORLD'S MOST INNOVATIVE GIANTS. AS WE BUILD THIS UNPARALLELED LEGACY, THE FUTURE BELONGS TO THE GODS OF AI.
-          </p>
         </div>
       </div>
     </div>
